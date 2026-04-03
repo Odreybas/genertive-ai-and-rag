@@ -91,17 +91,56 @@ for page in pages:
         relevant_docs = retriever.invoke(question)
         context = "\n".join([doc.page_content for doc in relevant_docs])
 
-        input_text = f"answer: {question} context: {context}"
+        # Enhanced prompt for better answers
+        input_text = f"""Based on the following context, provide a comprehensive and complete answer to the question.
+
+Context: {context}
+
+Question: {question}
+
+Answer:"""
 
         inputs = tokenizer(input_text, return_tensors="pt", truncation=True, max_length=1024).to(device)
 
+        # Improved generation parameters for longer, more complete answers
         outputs = model.generate(
             **inputs,
-            max_new_tokens=512,
-            do_sample=False
+            max_new_tokens=1024,  # Increased from 512
+            min_new_tokens=50,    # Ensure minimum length
+            do_sample=True,       # Enable sampling for more natural text
+            temperature=0.3,      # Low temperature for coherence
+            top_p=0.9,           # Nucleus sampling
+            repetition_penalty=1.2,  # Reduce repetition
+            length_penalty=1.0,   # Neutral length preference
+            num_beams=4,         # Beam search for better quality
+            early_stopping=True
         )
 
-        return tokenizer.decode(outputs[0], skip_special_tokens=True)
+        answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Post-process to ensure complete sentences
+        answer = answer.strip()
+        
+        # If answer ends mid-sentence, try to complete it
+        if answer and not answer.endswith(('.', '!', '?', ':')):
+            # Find last complete sentence
+            sentences = answer.split('. ')
+            if len(sentences) > 1:
+                # Keep all complete sentences
+                complete_sentences = []
+                for i, sent in enumerate(sentences):
+                    if i < len(sentences) - 1:  # All but last
+                        complete_sentences.append(sent + '.')
+                    else:
+                        # Check if last part is a complete sentence
+                        if sent.strip() and sent.strip()[-1] in '.!?':
+                            complete_sentences.append(sent)
+                        # Otherwise, discard incomplete sentence
+                
+                if complete_sentences:
+                    answer = ' '.join(complete_sentences)
+        
+        return answer
 
 # ==============================
 # SECTION 9: RUN A QUERY
