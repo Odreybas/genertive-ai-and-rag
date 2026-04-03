@@ -10,7 +10,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from transformers import AutoTokenizer, AutoModelForSeq2AudioLM
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import pyttsx3
 import speech_recognition as sr
 from reportlab.lib.pagesizes import letter
