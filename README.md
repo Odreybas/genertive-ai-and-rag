@@ -34,28 +34,48 @@ A comprehensive **Retrieval-Augmented Generation (RAG) system** with a professio
 
 ## 🚀 Quick Start
 
-### 1. Setup Environment
+### **Option 1: One-Click Start (Easiest)**
 ```bash
-# Clone or download the project
-cd /workspaces/genertive-ai-and-rag
+./start.sh
+```
+*Automatically installs dependencies and opens dashboard*
 
-# Install dependencies
+### **Option 2: Python Launcher**
+```bash
+./start.py
+```
+*Python script that handles everything automatically*
+
+### **Option 3: Manual Start**
+```bash
+# Install dependencies (if needed)
 pip install -r requirements.txt
+
+# Start dashboard
+streamlit run dashboard.py --server.port=7861
 ```
 
-### 2. Launch Dashboard
+### **Option 4: Direct Command**
 ```bash
 streamlit run dashboard.py --server.port=7861
 ```
 
-### 3. Access Interface
+### **Access Dashboard**
 Open `http://localhost:7861` in your browser
 
-### 4. Start Using
-- Upload PDFs using the sidebar uploader
-- Select PDFs from the dropdown
-- Ask questions in the Single Query tab
-- Explore other tabs for advanced features
+---
+
+## 📋 **Quick Reference**
+
+| What | Command |
+|------|---------|
+| **Start Dashboard** | `./start.sh` or `./start.py` |
+| **Install Dependencies** | `pip install -r requirements.txt` |
+| **Manual Start** | `streamlit run dashboard.py --server.port=7861` |
+| **Stop Dashboard** | `Ctrl+C` in terminal |
+| **Check Status** | Visit `http://localhost:7861` |
+
+**💡 Pro Tip**: Just remember `./start.sh` or `./start.py` - they do everything automatically!
 
 ## 📁 Project Structure
 
@@ -64,6 +84,8 @@ genertive-ai-and-rag/
 ├── dashboard.py          # Main Streamlit dashboard
 ├── main.py              # CLI version (legacy)
 ├── web_interface.py     # Simple web interface (legacy)
+├── start.sh             # 🚀 Easy bash launcher
+├── start.py             # 🚀 Easy Python launcher
 ├── requirements.txt     # Python dependencies
 ├── README.md           # This documentation
 ├── pdfs/               # PDF storage directory
