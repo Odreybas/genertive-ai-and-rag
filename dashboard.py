@@ -3,19 +3,23 @@ import re
 import torch
 import json
 import os
+import base64
 from pathlib import Path
 from datetime import datetime
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForSeq2AudioLM
 import pyttsx3
 import speech_recognition as sr
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+from gtts import gTTS
+import tempfile
+import base64
 
 # ==============================
 # PAGE CONFIG
@@ -69,14 +73,38 @@ def load_chat_history(pdf_name):
     return []
 
 def speak_text(text):
-    """Convert text to speech"""
+    """Convert text to speech using gTTS and provide audio player"""
     try:
-        engine = pyttsx3.init()
-        engine.setProperty('rate', 150)
-        engine.say(text)
-        engine.runAndWait()
-    except:
-        st.warning("Voice output not available")
+        # Create temporary audio file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
+            temp_filename = temp_file.name
+        
+        # Generate speech
+        tts = gTTS(text=text, lang='en', slow=False)
+        tts.save(temp_filename)
+        
+        # Read file and encode as base64 for Streamlit audio player
+        with open(temp_filename, 'rb') as audio_file:
+            audio_bytes = audio_file.read()
+        
+        # Clean up temp file
+        os.unlink(temp_filename)
+        
+        # Create audio player in Streamlit
+        audio_base64 = base64.b64encode(audio_bytes).decode()
+        audio_html = f"""
+        <audio controls autoplay>
+            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+            Your browser does not support the audio element.
+        </audio>
+        """
+        st.markdown(audio_html, unsafe_allow_html=True)
+        
+        return True
+    except Exception as e:
+        st.error(f"❌ Voice synthesis failed: {str(e)}")
+        st.info("💡 Try using a different browser or check internet connection")
+        return False
 
 def transcribe_audio():
     """Capture and transcribe audio"""
@@ -276,16 +304,48 @@ with tab1:
     # Display conversation
     if st.session_state.chat_history:
         st.markdown("### 💬 Conversation History")
+        
+        # Clear all button
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"**{len(st.session_state.chat_history)} questions asked**")
+        with col2:
+            if st.button("🗑️ Clear All", type="secondary"):
+                st.session_state.chat_history = []
+                save_chat_history(selected_pdf, [])
+                st.success("✅ All conversations cleared!")
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Display each Q&A pair with delete option
         for i, entry in enumerate(st.session_state.chat_history):
-            col1, col2 = st.columns([0.1, 0.9])
+            col1, col2, col3 = st.columns([0.05, 0.9, 0.05])
+            
             with col1:
                 st.markdown(f"**Q{i+1}**")
+            
             with col2:
                 st.markdown(f"**Your Question**: {entry['question']}")
                 st.info(f"**Answer**: {entry['answer']}")
+                
+                # Show timestamp
+                timestamp = datetime.fromisoformat(entry['timestamp'])
+                st.caption(f"🕒 {timestamp.strftime('%H:%M:%S')}")
+                
                 if enable_voice and st.button(f"🔊 Speak Answer {i+1}", key=f"speak_{i}"):
                     speak_text(entry['answer'])
-                st.markdown("---")
+            
+            with col3:
+                # Delete button for this entry
+                if st.button("❌", key=f"delete_{i}", help="Delete this Q&A pair"):
+                    # Remove the entry
+                    st.session_state.chat_history.pop(i)
+                    save_chat_history(selected_pdf, st.session_state.chat_history)
+                    st.success(f"✅ Deleted Q{i+1}")
+                    st.rerun()
+            
+            st.markdown("---")
     else:
         st.info("👆 Ask a question to get started!")
 
@@ -353,21 +413,70 @@ with tab4:
     st.markdown("### 🎤 Voice-Activated Q&A")
     
     if enable_voice:
+        st.markdown("#### 🎙️ Speak Your Question")
         col1, col2 = st.columns(2)
+        
+        voice_question = None
+        
         with col1:
-            if st.button("🎙️ Start Recording"):
-                transcript = transcribe_audio()
-                if transcript:
-                    st.success(f"You said: {transcript}")
-                    with st.spinner("Processing..."):
-                        answer, _ = query_rag(transcript, pipeline)
-                    st.info(f"**Answer**: {answer}")
-                    if st.button("🔊 Speak Answer"):
-                        speak_text(answer)
+            if st.button("🎙️ Start Recording", use_container_width=True):
+                with st.spinner("🎤 Listening... (speak now)"):
+                    try:
+                        recognizer = sr.Recognizer()
+                        with sr.Microphone() as source:
+                            st.info("🎤 Say your question now...")
+                            audio = recognizer.listen(source, timeout=5)
+                            voice_question = recognizer.recognize_google(audio)
+                            st.success(f"✅ Heard: '{voice_question}'")
+                    except sr.WaitTimeoutError:
+                        st.error("❌ No speech detected. Try again.")
+                    except sr.UnknownValueError:
+                        st.error("❌ Could not understand speech. Try again.")
+                    except sr.RequestError as e:
+                        st.error(f"❌ Speech recognition error: {e}")
+                        st.info("💡 Check your internet connection")
+                    except Exception as e:
+                        st.error(f"❌ Microphone error: {e}")
+                        st.info("💡 Make sure your browser has microphone permissions")
+        
         with col2:
-            st.info("📝 Make sure your microphone is enabled!")
+            st.markdown("#### 🔊 Voice Settings")
+            voice_speed = st.slider("Speech Speed", 0.5, 2.0, 1.0, 0.1)
+            voice_lang = st.selectbox("Language", ["en", "es", "fr", "de"], index=0)
+            
+            if st.button("🔊 Test Voice", use_container_width=True):
+                test_text = "Hello! Voice synthesis is working correctly."
+                if speak_text(test_text):
+                    st.success("✅ Voice test successful!")
+        
+        # Process voice question
+        if voice_question:
+            st.markdown("---")
+            st.markdown("#### 📝 Processing Your Voice Question")
+            with st.spinner("⏳ Analyzing..."):
+                answer, _ = query_rag(voice_question, pipeline)
+            
+            st.markdown(f"**Your Question**: {voice_question}")
+            st.info(f"**Answer**: {answer}")
+            
+            # Auto-play answer
+            if st.button("🔊 Play Answer", use_container_width=True):
+                speak_text(answer)
+            
+            # Save to history
+            chat_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "question": f"[🎤 VOICE] {voice_question}",
+                "answer": answer
+            }
+            if "chat_history" not in st.session_state:
+                st.session_state.chat_history = load_chat_history(selected_pdf)
+            st.session_state.chat_history.append(chat_entry)
+            save_chat_history(selected_pdf, st.session_state.chat_history)
+            
     else:
         st.warning("🎤 Voice feature is disabled. Enable it in Settings!")
+        st.info("💡 Voice requires internet connection for speech recognition")
 
 # ==============================
 # TAB 5: EXPORT
